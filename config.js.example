@@ -1,0 +1,5 @@
+// Example configuration file - rename to config.js and add your API keys
+const config = {
+    POLYGON_API_KEY: 'YOUR_POLYGON_API_KEY',
+    OPENAI_API_KEY: 'YOUR_OPENAI_API_KEY'
+}; 
