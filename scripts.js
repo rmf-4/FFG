@@ -11,16 +11,18 @@ function logDebug(message, data) {
 let priceChart;
 let volumeChart;
 
-// API configuration
-const POLYGON_BASE_URL = 'https://api.polygon.io/v2';
-const STOCK_TICKER = 'AMZN';
+// Initialize TradingView widget
+let tradingViewWidget;
 
-// Add rate limiting configuration
-const API_CONFIG = {
-    lastRequest: 0,
-    minRequestInterval: 15000, // 15 seconds between requests
-    maxRetries: 3,
-    retryDelay: 20000 // 20 seconds
+// Constants
+const STOCK_TICKER = 'AMZN';
+const MARKETWATCH_URL = 'https://www.marketwatch.com/investing/stock/amzn';
+
+// Cache configuration
+const CACHE_CONFIG = {
+    STOCK_DATA_KEY: 'amzn_data',
+    LAST_FETCH_KEY: 'amzn_last_fetch',
+    MAX_AGE_MS: 5 * 60 * 1000 // 5 minutes in milliseconds
 };
 
 // Function to format numbers for display
@@ -38,391 +40,207 @@ function formatCurrency(num) {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(num);
 }
 
-// Add delay function
-function delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-// Add rate limiting function
-async function waitForRateLimit() {
-    const now = Date.now();
-    const timeSinceLastRequest = now - API_CONFIG.lastRequest;
-    if (timeSinceLastRequest < API_CONFIG.minRequestInterval) {
-        await delay(API_CONFIG.minRequestInterval - timeSinceLastRequest);
-    }
-    API_CONFIG.lastRequest = Date.now();
-}
-
-// Function to fetch current stock data
-async function fetchCurrentData(retryCount = 0) {
+// Cache management functions
+function saveToCache(key, data) {
     try {
-        logDebug('Fetching current data, attempt', retryCount + 1);
-        await waitForRateLimit();
-        const response = await fetch(
-            `${POLYGON_BASE_URL}/aggs/ticker/${STOCK_TICKER}/prev?apiKey=${config.POLYGON_API_KEY}`
-        );
-        
-        if (response.status === 429 && retryCount < API_CONFIG.maxRetries) {
-            console.log(`Rate limited, retrying in ${API_CONFIG.retryDelay}ms...`);
-            await delay(API_CONFIG.retryDelay);
-            return fetchCurrentData(retryCount + 1);
-        }
-
-        const data = await response.json();
-        
-        if (data.results && data.results[0]) {
-            const result = data.results[0];
-            
-            // Update current price
-            document.getElementById('currentPrice').textContent = formatCurrency(result.c);
-            
-            // Update volume
-            document.getElementById('volume').textContent = formatNumber(result.v);
-            
-            // Update 24h change
-            const priceChange = result.c - result.o;
-            const changePercent = (priceChange / result.o) * 100;
-            const changeElement = document.getElementById('dayChange');
-            const changeText = `${formatCurrency(priceChange)} (${changePercent.toFixed(2)}%)`;
-            changeElement.textContent = changeText;
-            changeElement.className = priceChange >= 0 ? 'metric-value positive' : 'metric-value negative';
-            
-            // Update market cap (using Amazon's approximate shares outstanding)
-            const sharesOutstanding = 10.2e9; // Amazon's approximate shares outstanding
-            const marketCap = result.c * sharesOutstanding;
-            document.getElementById('marketCap').textContent = formatCurrency(marketCap);
-        }
+        localStorage.setItem(key, JSON.stringify({
+            timestamp: Date.now(),
+            data: data
+        }));
     } catch (error) {
-        logDebug('Error in fetchCurrentData', error);
-        console.error('Error fetching current data:', error);
-        if (retryCount < API_CONFIG.maxRetries) {
-            await delay(API_CONFIG.retryDelay);
-            return fetchCurrentData(retryCount + 1);
-        }
-        // Set error state for metrics if all retries fail
-        document.getElementById('currentPrice').textContent = 'Error loading data';
-        document.getElementById('dayChange').textContent = 'Error loading data';
-        document.getElementById('volume').textContent = 'Error loading data';
-        document.getElementById('marketCap').textContent = 'Error loading data';
+        console.error('Error saving to cache:', error);
     }
 }
 
-// Function to fetch historical data for charts
-async function fetchHistoricalData(retryCount = 0) {
+function getFromCache(key) {
     try {
-        await waitForRateLimit();
-        const toDate = new Date();
-        const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - 30); // Reduce to 30 days to minimize data
-
-        const response = await fetch(
-            `${POLYGON_BASE_URL}/aggs/ticker/${STOCK_TICKER}/range/1/day/${Math.floor(fromDate.getTime()/1000)}/${Math.floor(toDate.getTime()/1000)}?adjusted=true&sort=asc&limit=30&apiKey=${config.POLYGON_API_KEY}`
-        );
+        const cached = localStorage.getItem(key);
+        if (!cached) return null;
         
-        if (response.status === 429 && retryCount < API_CONFIG.maxRetries) {
-            console.log(`Rate limited, retrying in ${API_CONFIG.retryDelay}ms...`);
-            await delay(API_CONFIG.retryDelay);
-            return fetchHistoricalData(retryCount + 1);
+        const { timestamp, data } = JSON.parse(cached);
+        const age = Date.now() - timestamp;
+        
+        if (age < CACHE_CONFIG.MAX_AGE_MS) {
+            return data;
+        } else {
+            localStorage.removeItem(key);
+            return null;
         }
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('Historical Data:', data); // Debug log
-        return data;
     } catch (error) {
-        console.error('Error fetching historical data:', error);
-        if (retryCount < API_CONFIG.maxRetries) {
-            await delay(API_CONFIG.retryDelay);
-            return fetchHistoricalData(retryCount + 1);
-        }
+        console.error('Error reading from cache:', error);
         return null;
     }
 }
 
-// Function to analyze price movements and find buy/sell points
-function analyzeTradingPoints(data) {
-    const points = {
-        buy: [],
-        sell: []
-    };
-    
-    // Simple strategy: Buy when price crosses above 5-day MA, Sell when it crosses below
-    const period = 5;
-    for (let i = period; i < data.length; i++) {
-        const ma = data.slice(i - period, i).reduce((sum, item) => sum + item.c, 0) / period;
-        const prevMa = data.slice(i - period - 1, i - 1).reduce((sum, item) => sum + item.c, 0) / period;
-        
-        if (data[i].c > ma && data[i-1].c <= prevMa) {
-            points.buy.push(i);
-        }
-        if (data[i].c < ma && data[i-1].c >= prevMa) {
-            points.sell.push(i);
-        }
-    }
-    return points;
-}
-
-// Function to update charts with new data
-function updateCharts(data) {
-    if (!data || !Array.isArray(data)) {
-        console.error('Invalid data format for charts:', data);
-        return;
-    }
-
-    // Limit data points to last 30 days for better performance
-    const limitedData = data.slice(-30);
-    const dates = limitedData.map(item => new Date(item.t).toLocaleDateString());
-    const prices = limitedData.map(item => item.c);
-    const volumes = limitedData.map(item => item.v);
-    
-    const tradingPoints = analyzeTradingPoints(limitedData);
-
-    // Update price chart with optimized configuration
-    const priceCtx = document.getElementById('priceChart').getContext('2d');
-    if (priceChart) {
-        priceChart.destroy();
-    }
-    
-    priceChart = new Chart(priceCtx, {
-        type: 'line',
-        data: {
-            labels: dates,
-            datasets: [
-                {
-                    label: 'AMZN',
-                    data: prices,
-                    borderColor: '#1a237e',
-                    tension: 0.1,
-                    fill: false,
-                    pointRadius: 0 // Remove points for better performance
-                },
-                {
-                    label: 'Buy',
-                    data: prices.map((price, index) => 
-                        tradingPoints.buy.includes(index) ? price : null),
-                    pointBackgroundColor: '#4CAF50',
-                    pointRadius: 6,
-                    showLine: false
-                },
-                {
-                    label: 'Sell',
-                    data: prices.map((price, index) => 
-                        tradingPoints.sell.includes(index) ? price : null),
-                    pointBackgroundColor: '#f44336',
-                    pointRadius: 6,
-                    showLine: false
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 2,
-            animation: false, // Disable animations for better performance
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'top',
-                    labels: {
-                        boxWidth: 20,
-                        padding: 10
-                    }
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(context) {
-                            return `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: {
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 10
-                    }
-                },
-                y: {
-                    beginAtZero: false,
-                    ticks: {
-                        callback: function(value) {
-                            return formatCurrency(value);
-                        },
-                        maxTicksLimit: 6
-                    }
-                }
-            }
-        }
-    });
-
-    // Update volume chart with optimized configuration
-    const volumeCtx = document.getElementById('volumeChart').getContext('2d');
-    if (volumeChart) {
-        volumeChart.destroy();
-    }
-
-    volumeChart = new Chart(volumeCtx, {
-        type: 'bar',
-        data: {
-            labels: dates,
-            datasets: [{
-                label: 'Volume',
-                data: volumes,
-                backgroundColor: '#0277bd'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 2,
-            animation: false,
-            plugins: {
-                legend: {
-                    display: false
-                },
-                tooltip: {
-                    mode: 'index',
-                    intersect: false,
-                    callbacks: {
-                        label: function(context) {
-                            return `Volume: ${formatNumber(context.parsed.y)}`;
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: {
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 10
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        callback: function(value) {
-                            return formatNumber(value);
-                        },
-                        maxTicksLimit: 6
-                    }
-                }
-            }
-        }
-    });
-}
-
-// Add AI Analysis function
-async function updateAIAnalysis(data) {
+// Function to fetch stock data by scraping MarketWatch
+async function fetchStockData(forceRefresh = false) {
     try {
-        const recentPrices = data.slice(-5).map(item => item.c);
-        const currentPrice = recentPrices[recentPrices.length - 1];
-        const priceChange = ((currentPrice - recentPrices[0]) / recentPrices[0]) * 100;
-        
-        const prompt = `
-            Analyze this Amazon (AMZN) stock data:
-            Current Price: ${formatCurrency(currentPrice)}
-            5-day Price Change: ${priceChange.toFixed(2)}%
-            Recent Prices: ${recentPrices.map(p => formatCurrency(p)).join(', ')}
-            
-            Provide a concise analysis in JSON format with these keys:
-            - technical: Technical analysis of price movements
-            - sentiment: Market sentiment analysis
-            - signals: Trading signals with reasoning
-            - risk: Key risk factors
-            
-            Keep each section under 50 words.
-        `;
+        // Check cache first unless force refresh is requested
+        if (!forceRefresh) {
+            const cachedData = getFromCache(CACHE_CONFIG.STOCK_DATA_KEY);
+            if (cachedData) {
+                updateUI(cachedData);
+                return cachedData;
+            }
+        }
 
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-3.5-turbo",
-                messages: [{
-                    role: "user",
-                    content: prompt
-                }],
-                temperature: 0.7
-            })
-        });
+        // Create a proxy URL to bypass CORS
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const response = await fetch(proxyUrl + encodeURIComponent(MARKETWATCH_URL));
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const result = await response.json();
-        const analysis = JSON.parse(result.choices[0].message.content);
+        const html = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
 
-        // Update the UI
-        document.getElementById('technicalAnalysis').textContent = analysis.technical;
-        document.getElementById('marketSentiment').textContent = analysis.sentiment;
-        document.getElementById('tradingSignals').textContent = analysis.signals;
-        document.getElementById('riskAssessment').textContent = analysis.risk;
+        // Extract data using more specific selectors
+        const priceElement = doc.querySelector('h2[class*="intraday__price"] bg-quote');
+        const openElement = doc.querySelector('td[class*="price__open"]');
+        const volumeElement = doc.querySelector('td[class*="price__volume"]');
+
+        // Parse current price
+        const price = parseFloat(priceElement?.textContent?.replace(/[^0-9.-]+/g, '') || '0');
+        
+        // Parse opening price
+        const openPrice = parseFloat(openElement?.textContent?.replace(/[^0-9.-]+/g, '') || price);
+        
+        // Calculate change from open
+        const change = price - openPrice;
+        const changePercent = (change / openPrice) * 100;
+        
+        // Better volume parsing with debugging
+        let volume = 0;
+        if (volumeElement) {
+            const volumeText = volumeElement.textContent.trim();
+            console.log('Volume text:', volumeText); // Debug log
+            
+            // Remove all commas first
+            const cleanText = volumeText.replace(/,/g, '');
+            
+            if (cleanText.includes('M')) {
+                volume = parseFloat(cleanText.replace('M', '')) * 1000000;
+            } else if (cleanText.includes('K')) {
+                volume = parseFloat(cleanText.replace('K', '')) * 1000;
+            } else {
+                volume = parseInt(cleanText.replace(/[^0-9]+/g, '')) || 0;
+            }
+        }
+
+        // Create data object
+        const data = {
+            price: price || 0,
+            openPrice: openPrice || 0,
+            change: change || 0,
+            changePercent: changePercent || 0,
+            volume: volume || 0,
+            timestamp: Date.now()
+        };
+
+        // Debug log the parsed data
+        console.log('Parsed data:', data);
+
+        // Save to cache
+        saveToCache(CACHE_CONFIG.STOCK_DATA_KEY, data);
+        
+        // Update UI
+        updateUI(data);
+        
+        return data;
     } catch (error) {
-        console.error('Error updating AI analysis:', error);
-        const errorMessage = 'Analysis temporarily unavailable';
-        document.getElementById('technicalAnalysis').textContent = errorMessage;
-        document.getElementById('marketSentiment').textContent = errorMessage;
-        document.getElementById('tradingSignals').textContent = errorMessage;
-        document.getElementById('riskAssessment').textContent = errorMessage;
+        console.error('Error fetching stock data:', error);
+        setErrorState();
+        return null;
     }
 }
 
-// Update initialize function with better interval timing
+// Function to update UI with data
+function updateUI(data) {
+    // Update current price
+    document.getElementById('currentPrice').textContent = formatCurrency(data.price);
+    
+    // Update volume with better formatting
+    const formattedVolume = data.volume >= 1000000 
+        ? `${(data.volume / 1000000).toFixed(2)}M`
+        : data.volume >= 1000 
+            ? `${(data.volume / 1000).toFixed(2)}K`
+            : formatNumber(data.volume);
+    document.getElementById('volume').textContent = formattedVolume;
+    
+    // Update 24h change (change since market open)
+    const changeElement = document.getElementById('dayChange');
+    const changeText = `${formatCurrency(data.change)} (${data.changePercent.toFixed(2)}%)`;
+    changeElement.textContent = changeText;
+    changeElement.className = data.change >= 0 ? 'metric-value positive' : 'metric-value negative';
+    
+    // Update market cap
+    const sharesOutstanding = 10.2e9;
+    const marketCap = data.price * sharesOutstanding;
+    document.getElementById('marketCap').textContent = formatCurrency(marketCap);
+
+    // Update last updated time
+    const lastUpdated = new Date(data.timestamp).toLocaleTimeString();
+    document.getElementById('lastUpdated').textContent = `Last updated: ${lastUpdated}`;
+}
+
+// Function to set error state
+function setErrorState() {
+    document.getElementById('currentPrice').textContent = 'Error loading data';
+    document.getElementById('dayChange').textContent = 'Error loading data';
+    document.getElementById('volume').textContent = 'Error loading data';
+    document.getElementById('marketCap').textContent = 'Error loading data';
+    document.getElementById('lastUpdated').textContent = 'Failed to update';
+}
+
+// Function to initialize TradingView widget
+function initTradingViewWidget() {
+    tradingViewWidget = new TradingView.widget({
+        "width": "100%",
+        "height": "100%",
+        "symbol": "NASDAQ:AMZN",
+        "interval": "D",
+        "timezone": "local",
+        "theme": "light",
+        "style": "1",
+        "locale": "en",
+        "toolbar_bg": "#f1f3f6",
+        "enable_publishing": false,
+        "hide_side_toolbar": false,
+        "allow_symbol_change": true,
+        "container_id": "tradingview-widget",
+        "save_image": true,
+        "studies": [
+            "Volume@tv-basicstudies",
+            "MACD@tv-basicstudies",
+            "RSI@tv-basicstudies"
+        ]
+    });
+}
+
+// Initialize function
 async function initialize() {
     try {
-        logDebug('Starting initialization');
-        
-        // Test Polygon.io API
-        const testResponse = await fetch(
-            `${POLYGON_BASE_URL}/aggs/ticker/${STOCK_TICKER}/prev?apiKey=${config.POLYGON_API_KEY}`
-        );
-        logDebug('API Test Response', await testResponse.json());
-
         // Show loading state
         document.getElementById('currentPrice').textContent = 'Loading...';
         document.getElementById('dayChange').textContent = 'Loading...';
         document.getElementById('volume').textContent = 'Loading...';
         document.getElementById('marketCap').textContent = 'Loading...';
+        document.getElementById('lastUpdated').textContent = 'Loading...';
 
-        // Fetch initial data
-        const historicalData = await fetchHistoricalData();
-        if (historicalData && historicalData.results) {
-            updateCharts(historicalData.results);
-            await updateAIAnalysis(historicalData.results);
-        }
-        await fetchCurrentData();
+        // Initialize TradingView widget
+        initTradingViewWidget();
 
-        // Update current data every 15 seconds
-        setInterval(fetchCurrentData, 15000);
-        
-        // Update historical data and charts every 2 minutes
-        setInterval(async () => {
-            const data = await fetchHistoricalData();
-            if (data && data.results) {
-                updateCharts(data.results);
-                await updateAIAnalysis(data.results);
-            }
-        }, 120000);
+        // Initial data fetch
+        await fetchStockData(true);
+
+        // Set up auto-refresh every 5 minutes
+        setInterval(() => fetchStockData(true), CACHE_CONFIG.MAX_AGE_MS);
 
     } catch (error) {
-        logDebug('Initialization error', error);
-        // Show error state
-        document.getElementById('currentPrice').textContent = 'Error loading data';
-        document.getElementById('dayChange').textContent = 'Error loading data';
-        document.getElementById('volume').textContent = 'Error loading data';
-        document.getElementById('marketCap').textContent = 'Error loading data';
+        console.error('Failed to initialize:', error);
+        setErrorState();
     }
 }
 

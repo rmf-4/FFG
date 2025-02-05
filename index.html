@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Amazon Stock Analysis | FFG</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- TradingView Widget -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 </head>
 <body>
     <header>
@@ -13,8 +15,8 @@
             <div class="logo">FFG</div>
             <ul class="nav-links">
                 <li><a href="#home">Home</a></li>
-                <li><a href="#charts">Charts</a></li>
-                <li><a href="#analysis">Analysis</a></li>
+                <li><a href="#metrics">Metrics</a></li>
+                <li><a href="#chart">Chart</a></li>
                 <li><a href="#about">About</a></li>
             </ul>
         </nav>
@@ -45,37 +47,14 @@
                     <p id="marketCap" class="metric-value">Loading...</p>
                 </div>
             </div>
+            <p id="lastUpdated" class="last-updated">Loading...</p>
         </section>
 
-        <section id="charts" class="chart-container">
-            <div class="chart-wrapper">
-                <h2>Price Chart</h2>
-                <canvas id="priceChart"></canvas>
-            </div>
-            <div class="chart-wrapper">
-                <h2>Volume</h2>
-                <canvas id="volumeChart"></canvas>
-            </div>
-        </section>
-
-        <section id="ai-analysis" class="analysis-section">
-            <h2>AI Market Analysis</h2>
-            <div class="analysis-grid">
-                <div class="analysis-card">
-                    <h3>Technical Analysis</h3>
-                    <p id="technicalAnalysis" class="analysis-text">Loading analysis...</p>
-                </div>
-                <div class="analysis-card">
-                    <h3>Market Sentiment</h3>
-                    <p id="marketSentiment" class="analysis-text">Loading analysis...</p>
-                </div>
-                <div class="analysis-card">
-                    <h3>Trading Signals</h3>
-                    <p id="tradingSignals" class="analysis-text">Loading analysis...</p>
-                </div>
-                <div class="analysis-card">
-                    <h3>Risk Assessment</h3>
-                    <p id="riskAssessment" class="analysis-text">Loading analysis...</p>
+        <section id="chart" class="chart-section">
+            <div class="chart-container">
+                <h2>Interactive Chart</h2>
+                <div class="chart-wrapper">
+                    <div id="tradingview-widget"></div>
                 </div>
             </div>
         </section>
@@ -84,8 +63,6 @@
     <footer>
         <p>&copy; 2024 FFG - Financial Future Graph. All rights reserved.</p>
     </footer>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="./config.js"></script>
-    <script src="./scripts.js"></script>
+    <script src="scripts.js"></script>
 </body>
 </html> 
