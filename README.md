@@ -16,20 +16,20 @@ A web application for visualizing and analyzing Amazon stock price trends. This 
 - CSS
 - JavaScript
 - Chart.js for data visualization
-- Finnhub.io API for real-time stock data
+- Polygon.io API for real-time stock data
 
 ## API Integration
-This project uses the Finnhub.io API which provides:
-- Historical candle data
-- Real-time price updates
+This project uses the Polygon.io API which provides:
+- Historical aggregates data
+- Real-time trade data
 - Trading volume information
 - Market statistics
-- Free tier with generous limits (60 API calls per minute)
+- Reliable and fast updates
 
 ## Setup
 1. Clone the repository
-2. Sign up for a free API key at https://finnhub.io/register
-3. Add your Finnhub API key to scripts.js
+2. Sign up for a free API key at https://polygon.io
+3. Add your Polygon.io API key to scripts.js
 4. Open index.html in a web browser
 
 ## Features
@@ -40,7 +40,7 @@ This project uses the Finnhub.io API which provides:
 - Color-coded price changes
 
 ## API Limits
-Finnhub.io free tier provides:
+Polygon.io free tier provides:
 - 60 API calls per minute
 - Real-time US stock data
 - Historical data
