@@ -28,8 +28,8 @@ This project uses the Polygon.io API which provides:
 
 ## Setup
 1. Clone the repository
-2. Sign up for a free API key at https://polygon.io
-3. Add your Polygon.io API key to scripts.js
+2. Copy `config.js.example` to `config.js`
+3. Add your API keys to `config.js`
 4. Open index.html in a web browser
 
 ## Features
@@ -45,3 +45,8 @@ Polygon.io free tier provides:
 - Real-time US stock data
 - Historical data
 - No daily limit
+
+## API Keys
+You'll need:
+- A Polygon.io API key (get one at https://polygon.io)
+- An OpenAI API key (optional, for AI analysis)
