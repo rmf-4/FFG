@@ -4,8 +4,10 @@ A web application for visualizing and analyzing Amazon stock price trends. This 
 
 ## Features
 - Historical stock price visualization using Chart.js
-- Real-time data updates (every minute)
+- Real-time data updates (every 10 seconds)
 - Interactive price charts with tooltips
+- Technical analysis indicators (20-day SMA)
+- Volume analysis
 - Key metrics display (Current Price, 24h Change, Volume, Market Cap)
 - Responsive design for all devices
 
@@ -14,21 +16,32 @@ A web application for visualizing and analyzing Amazon stock price trends. This 
 - CSS
 - JavaScript
 - Chart.js for data visualization
-- Alpha Vantage API for real-time stock data
+- Finnhub.io API for real-time stock data
 
 ## API Integration
-This project uses the Alpha Vantage API to fetch real-time and historical stock data. The API provides:
-- Daily time series data
+This project uses the Finnhub.io API which provides:
+- Historical candle data
 - Real-time price updates
 - Trading volume information
-- Historical price trends
+- Market statistics
+- Free tier with generous limits (60 API calls per minute)
 
 ## Setup
 1. Clone the repository
-2. Open index.html in a web browser
-3. The chart will automatically load with the latest AMZN stock data
+2. Sign up for a free API key at https://finnhub.io/register
+3. Add your Finnhub API key to scripts.js
+4. Open index.html in a web browser
 
-## Note
-The Alpha Vantage API has rate limits:
-- 25 API calls per day for free tier
-- 5 API calls per minute
+## Features
+- Real-time price updates every 10 seconds
+- Chart updates every minute
+- Technical analysis with moving averages
+- Volume analysis with separate chart
+- Color-coded price changes
+
+## API Limits
+Finnhub.io free tier provides:
+- 60 API calls per minute
+- Real-time US stock data
+- Historical data
+- No daily limit
